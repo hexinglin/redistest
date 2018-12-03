@@ -1,16 +1,15 @@
 package RedisMysql.Service;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.cache.annotation.*;
-import org.springframework.cache.interceptor.KeyGenerator;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CachingConfigurerSupport;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.StringRedisTemplate;
-
-import java.lang.reflect.Method;
-import java.net.UnknownHostException;
+import org.springframework.data.redis.core.*;
+import org.springframework.data.redis.serializer.JdkSerializationRedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 
 /**
@@ -24,56 +23,103 @@ import java.net.UnknownHostException;
 @EnableCaching
 public class RedisConfiguration  extends CachingConfigurerSupport {
 
+    /**
+     * 注入 RedisConnectionFactory
+     */
+    @Autowired
+    RedisConnectionFactory redisConnectionFactory;
+
+    /**
+     * 实例化 RedisTemplate 对象
+     *
+     * @return
+     */
     @Bean
-    @ConditionalOnMissingBean(name = "redisTemplate")
-    public RedisTemplate<Object, Object> redisTemplate(
-            RedisConnectionFactory redisConnectionFactory)
-            throws UnknownHostException {
-        RedisTemplate<Object, Object> template = new RedisTemplate<Object, Object>();
-        template.setConnectionFactory(redisConnectionFactory);
-        return template;
+    public RedisTemplate<String, Object> functionDomainRedisTemplate() {
+        RedisTemplate<String, Object> redisTemplate = new RedisTemplate<>();
+        initDomainRedisTemplate(redisTemplate, redisConnectionFactory);
+        return redisTemplate;
     }
 
-    @Bean
-    @ConditionalOnMissingBean(StringRedisTemplate.class)
-    public StringRedisTemplate stringRedisTemplate(
-            RedisConnectionFactory redisConnectionFactory)
-            throws UnknownHostException {
-        StringRedisTemplate template = new StringRedisTemplate();
-        template.setConnectionFactory(redisConnectionFactory);
-        return template;
+    /**
+     * 设置数据存入 redis 的序列化方式
+     *
+     * @param redisTemplate
+     * @param factory
+     */
+    private void initDomainRedisTemplate(RedisTemplate<String, Object> redisTemplate, RedisConnectionFactory factory) {
+        //定义key生成策略
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.setHashKeySerializer(new StringRedisSerializer());
+        redisTemplate.setHashValueSerializer(new JdkSerializationRedisSerializer());
+        redisTemplate.setValueSerializer(new JdkSerializationRedisSerializer());
+        redisTemplate.setConnectionFactory(factory);
     }
 
+//    /**
+//     * 缓存管理器
+//     * @param redisTemplate
+//     * @return
+//     */
+//    @Bean
+//    public CacheManager cacheManager(RedisTemplate<?,?> redisTemplate) {
+//        CacheManager cacheManager = new RedisCacheManager(redisTemplate);
+//        return cacheManager;
+//    }
 
-    // TODO 注意
-    // 这里的策略很简单，使用缓存名称 + id
+    /**
+     * 实例化 HashOperations 对象,可以使用 Hash 类型操作
+     *
+     * @param redisTemplate
+     * @return
+     */
     @Bean
-    public KeyGenerator keyGenerator() {
-        return new KeyGenerator() {
-            @Override
-            public Object generate(Object target, Method method, Object... params) {
-                StringBuilder sb = new StringBuilder();
-                String[] value = new String[1];
-                Cacheable cacheable = method.getAnnotation(Cacheable.class);
-                if (cacheable != null) {
-                    value = cacheable.value();
-                }
-                CachePut cachePut = method.getAnnotation(CachePut.class);
-                if (cachePut != null) {
-                    value = cachePut.value();
-                }
-                CacheEvict cacheEvict = method.getAnnotation(CacheEvict.class);
-                if (cacheEvict != null) {
-                    value = cacheEvict.value();
-                }
-                sb.append(value[0]);
-                for (Object obj : params) {
-                    sb.append(":")
-                            .append(obj.toString());
-                }
-                return sb.toString();
-            }
-        };
+    public HashOperations<String, String, Object> hashOperations(RedisTemplate<String, Object> redisTemplate) {
+        return redisTemplate.opsForHash();
+    }
+
+    /**
+     * 实例化 ValueOperations 对象,可以使用 String 操作
+     *
+     * @param redisTemplate
+     * @return
+     */
+    @Bean
+    public ValueOperations<String, Object> valueOperations(RedisTemplate<String, Object> redisTemplate) {
+        return redisTemplate.opsForValue();
+    }
+
+    /**
+     * 实例化 ListOperations 对象,可以使用 List 操作
+     *
+     * @param redisTemplate
+     * @return
+     */
+    @Bean
+    public ListOperations<String, Object> listOperations(RedisTemplate<String, Object> redisTemplate) {
+        return redisTemplate.opsForList();
+    }
+
+    /**
+     * 实例化 SetOperations 对象,可以使用 Set 操作
+     *
+     * @param redisTemplate
+     * @return
+     */
+    @Bean
+    public SetOperations<String, Object> setOperations(RedisTemplate<String, Object> redisTemplate) {
+        return redisTemplate.opsForSet();
+    }
+
+    /**
+     * 实例化 ZSetOperations 对象,可以使用 ZSet 操作
+     *
+     * @param redisTemplate
+     * @return
+     */
+    @Bean
+    public ZSetOperations<String, Object> zSetOperations(RedisTemplate<String, Object> redisTemplate) {
+        return redisTemplate.opsForZSet();
     }
 
 

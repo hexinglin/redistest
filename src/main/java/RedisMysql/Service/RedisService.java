@@ -1,15 +1,14 @@
 package RedisMysql.Service;
 
 
-import RedisMysql.entity.User;
-import com.google.common.reflect.TypeToken;
-import com.google.gson.Gson;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Repository;
-import org.springframework.util.StringUtils;
+import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -18,42 +17,105 @@ import java.util.concurrent.TimeUnit;
  * @create: 2018-11-29 16:48
  **/
 
-@Repository
-public class RedisService {
+@Service
+public abstract class RedisService<T> {
 
+    /**
+     * 实例化 RedisTemplate对象
+     */
     @Autowired
-    StringRedisTemplate stringRedisTemplate;
+    protected RedisTemplate<String, Object> redisTemplate;
 
-    public void add(String key, User user, Long time) {
-        Gson gson = new Gson();
-        stringRedisTemplate.opsForValue().set(key, gson.toJson(user), time, TimeUnit.MINUTES);
-    }
+    /**
+     * 定义Hash结构 操作存储实体对象
+     */
+    @Resource
+    protected HashOperations<String, String, T> hashOperations;
 
-    public void add(String key, List<User> users, Long time) {
-        Gson gson = new Gson();
-        String src = gson.toJson(users);
-        stringRedisTemplate.opsForValue().set(key, src, time, TimeUnit.MINUTES);
-    }
+    /**
+     * 定义Hash表的redis key名称
+     *
+     * @return
+     */
+    protected abstract String getRedisKey();
 
-    public User get(String key) {
-        String source = stringRedisTemplate.opsForValue().get(key);
-        if (!StringUtils.isEmpty(source)) {
-            return new Gson().fromJson(source, User.class);
+    /**
+     * 在相应Hash表中添加键值对 key:Object(doamin)
+     *
+     * @param key    key
+     * @param doamin 对象
+     * @param expire 过期时间(单位:秒),传入 -1 时表示不设置过期时间
+     */
+    public void put(String key, T doamin, long expire) {
+        hashOperations.put(getRedisKey(), key, doamin);
+        if (expire != -1) {
+            redisTemplate.expire(getRedisKey(), expire, TimeUnit.SECONDS);
         }
-        return null;
     }
 
-    public List<User> getUserList(String key) {
-        String source = stringRedisTemplate.opsForValue().get(key);
-        if (!StringUtils.isEmpty(source)) {
-            return new Gson().fromJson(source, new TypeToken<List<User>>() {
-            }.getType());
-        }
-        return null;
+    /**
+     * 在相应Hash表中删除key名称的元素
+     *
+     * @param key 传入key的名称
+     */
+    public void remove(String key) {
+        hashOperations.delete(getRedisKey(), key);
     }
 
-    public void delete(String key) {
-        stringRedisTemplate.opsForValue().getOperations().delete(key);
+    /**
+     * 在相应Hash表中查询key名称的元素
+     *
+     * @param key 查询的key
+     * @return
+     */
+    public T get(String key) {
+        return hashOperations.get(getRedisKey(), key);
     }
+
+    /**
+     * 获取在相应Hash表下的所有实体对象
+     *
+     * @return
+     */
+    public List<T> getAll() {
+        return hashOperations.values(getRedisKey());
+    }
+
+    /**
+     * 查询在相应Hash表下的所有key名称
+     *
+     * @return
+     */
+    public Set<String> getKeys() {
+        return hashOperations.keys(getRedisKey());
+    }
+
+    /**
+     * 判断在相应Hash表下key是否存在
+     *
+     * @param key 传入key的名称
+     * @return
+     */
+    public boolean isKeyExists(String key) {
+        return hashOperations.hasKey(getRedisKey(), key);
+    }
+
+    /**
+     * 查询相应Hash表的缓存数量
+     *
+     * @return
+     */
+    public long count() {
+        return hashOperations.size(getRedisKey());
+    }
+
+    /**
+     * 清空相应Hash表的所有缓存
+     */
+    public void empty() {
+        Set<String> set = hashOperations.keys(getRedisKey());
+        set.stream().forEach(key -> hashOperations.delete(getRedisKey(), key));
+    }
+
 
 }
